@@ -17,7 +17,17 @@ type ServerRoom = {
 
 const rooms = new Map<RoomCode, ServerRoom>();
 
-const httpServer = createServer();
+const httpServer = createServer((req, res) => {
+  // Healthcheck simple para deploy (ALB/NGINX/uptime monitors).
+  if (req.url === "/health") {
+    res.statusCode = 200;
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  res.statusCode = 404;
+  res.end("not found");
+});
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: { origin: true, credentials: true }
 });

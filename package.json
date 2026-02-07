@@ -9,7 +9,8 @@
     "dev": "npm run dev:server",
     "dev:server": "npm -w @bunker/server run dev",
     "dev:web": "npm -w @bunker/web run dev",
-    "build": "npm -w @bunker/server run build && npm -w @bunker/web run build",
+    "build": "npm run build:server && npm -w @bunker/web run build",
+    "build:server": "npm -w @bunker/protocol run build && npm -w @bunker/server run build",
     "typecheck": "echo \"TODO: typecheck\""
   }
 }
