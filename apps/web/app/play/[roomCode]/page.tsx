@@ -5,18 +5,8 @@ import { useParams } from "next/navigation";
 import type { ControlEvent, RoomState } from "@bunker/protocol";
 import { getOrCreatePlayerId, getPlayerName } from "@/src/lib/identity";
 import { getSocket } from "@/src/lib/socket";
-
-function holdButtonHandlers(onDown: () => void, onUp: () => void) {
-  return {
-    onPointerDown: (e: React.PointerEvent) => {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      onDown();
-    },
-    onPointerUp: () => onUp(),
-    onPointerCancel: () => onUp(),
-    onPointerLeave: () => onUp()
-  };
-}
+import { DPad } from "@/src/components/controls/DPad";
+import { HoldButton } from "@/src/components/controls/HoldButton";
 
 export default function ControllerPage() {
   const params = useParams<{ roomCode: string }>();
@@ -25,6 +15,7 @@ export default function ControllerPage() {
   const socket = useMemo(() => getSocket(), []);
   const [state, setState] = useState<RoomState | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [connected, setConnected] = useState<boolean>(socket.connected);
 
   const playerId = useMemo(() => getOrCreatePlayerId(), []);
   const name = useMemo(() => getPlayerName() || `Player`, []);
@@ -32,9 +23,16 @@ export default function ControllerPage() {
   useEffect(() => {
     const onRoomState = ({ state }: { state: RoomState }) => setState(state);
     const onRoomError = ({ message }: { message: string }) => setErr(message);
+    const onConnect = () => {
+      setConnected(true);
+      socket.emit("room:join", { roomCode, playerId, name });
+    };
+    const onDisconnect = () => setConnected(false);
 
     socket.on("room:state", onRoomState);
     socket.on("room:error", onRoomError);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
 
     socket.emit("room:join", { roomCode, playerId, name });
 
@@ -42,6 +40,8 @@ export default function ControllerPage() {
       socket.emit("room:leave", { roomCode, playerId });
       socket.off("room:state", onRoomState);
       socket.off("room:error", onRoomError);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
     };
   }, [socket, roomCode, playerId, name]);
 
@@ -62,6 +62,8 @@ export default function ControllerPage() {
           <div className="pill">Fase: {phase}</div>
           <div style={{ height: 8 }} />
           <div className="pill">Juego: {gameId ?? "none"}</div>
+          <div style={{ height: 8 }} />
+          <div className="pill">Socket: {connected ? "conectado" : "desconectado (reconectando...)"}</div>
         </div>
         <div className="pill">Yo: {name}</div>
       </div>
@@ -71,67 +73,21 @@ export default function ControllerPage() {
       <section className="card" style={{ marginTop: 16 }}>
         <h2 style={{ margin: "0 0 8px 0" }}>Controles</h2>
         <p className="subtitle" style={{ marginTop: 0 }}>
-          MVP: botones grandes (hold). El juego real viene después.
+          MVP: botones grandes (hold). Optimizado para jugar mirando la pantalla del host.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <div />
-            <button
-              className="btn btnPrimary"
-              {...holdButtonHandlers(
-                () => send({ type: "MOVE", dir: "UP", pressed: true }),
-                () => send({ type: "MOVE", dir: "UP", pressed: false })
-              )}
-            >
-              ↑
-            </button>
-            <div />
-
-            <button
-              className="btn btnPrimary"
-              {...holdButtonHandlers(
-                () => send({ type: "MOVE", dir: "LEFT", pressed: true }),
-                () => send({ type: "MOVE", dir: "LEFT", pressed: false })
-              )}
-            >
-              ←
-            </button>
-            <button className="btn" disabled style={{ opacity: 0.6 }}>•</button>
-            <button
-              className="btn btnPrimary"
-              {...holdButtonHandlers(
-                () => send({ type: "MOVE", dir: "RIGHT", pressed: true }),
-                () => send({ type: "MOVE", dir: "RIGHT", pressed: false })
-              )}
-            >
-              →
-            </button>
-
-            <div />
-            <button
-              className="btn btnPrimary"
-              {...holdButtonHandlers(
-                () => send({ type: "MOVE", dir: "DOWN", pressed: true }),
-                () => send({ type: "MOVE", dir: "DOWN", pressed: false })
-              )}
-            >
-              ↓
-            </button>
-            <div />
-          </div>
+          <DPad onDir={(dir, pressed) => send({ type: "MOVE", dir, pressed })} />
 
           <div style={{ display: "grid", gap: 10 }}>
-            <button
+            <HoldButton
               className="btn btnPrimary"
               style={{ padding: 18, fontSize: 18 }}
-              {...holdButtonHandlers(
-                () => send({ type: "ACTION", id: "SHOOT", pressed: true }),
-                () => send({ type: "ACTION", id: "SHOOT", pressed: false })
-              )}
+              onHoldStart={() => send({ type: "ACTION", id: "SHOOT", pressed: true })}
+              onHoldEnd={() => send({ type: "ACTION", id: "SHOOT", pressed: false })}
             >
               Disparar
-            </button>
+            </HoldButton>
 
             <div className="pill">
               Tip: si el host aún está en lobby o no seleccionó juego, no se envían inputs.
@@ -142,4 +98,3 @@ export default function ControllerPage() {
     </main>
   );
 }
-

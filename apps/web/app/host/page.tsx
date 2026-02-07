@@ -15,6 +15,9 @@ export default function HostPage() {
   const [state, setState] = useState<RoomState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [inputs, setInputs] = useState<InputLog[]>([]);
+  const [connected, setConnected] = useState<boolean>(socket.connected);
+  const [copied, setCopied] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const onRoomState = ({ state }: { state: RoomState }) => setState(state);
@@ -24,18 +27,43 @@ export default function HostPage() {
         [{ atMs: Date.now(), playerId: payload.playerId, event: payload.event }, ...prev].slice(0, 250)
       );
     };
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
 
     socket.on("room:state", onRoomState);
     socket.on("room:error", onRoomError);
     // payload real: { roomCode, gameId, playerId, event }
     socket.on("game:input", ((payload: any) => onGameInput({ playerId: payload.playerId, event: payload.event })) as any);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
 
     return () => {
       socket.off("room:state", onRoomState);
       socket.off("room:error", onRoomError);
       socket.off("game:input");
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
     };
   }, [socket]);
+
+  useEffect(() => {
+    async function buildQr() {
+      if (!state?.roomCode) {
+        setQrUrl(null);
+        return;
+      }
+      // QR usa el "join link" (sirve en prod también).
+      const url = `${window.location.origin}/play/${encodeURIComponent(state.roomCode)}`;
+      try {
+        const mod = await import("qrcode");
+        const dataUrl = await mod.toDataURL(url, { margin: 1, scale: 6 });
+        setQrUrl(dataUrl);
+      } catch {
+        setQrUrl(null);
+      }
+    }
+    void buildQr();
+  }, [state?.roomCode]);
 
   function createRoom() {
     setErr(null);
@@ -53,11 +81,25 @@ export default function HostPage() {
     socket.emit("room:start", { roomCode: state.roomCode });
   }
 
+  async function copyCode() {
+    if (!state?.roomCode) return;
+    try {
+      await navigator.clipboard.writeText(state.roomCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 900);
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <main className="container">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 className="title" style={{ margin: 0 }}>Host</h1>
-        <div className="pill">Modo: pantalla principal</div>
+        <div className="row">
+          <div className="pill">Socket: {connected ? "conectado" : "desconectado"}</div>
+          <div className="pill">Pantalla principal</div>
+        </div>
       </div>
 
       <div className="grid2">
@@ -93,6 +135,9 @@ export default function HostPage() {
 
               <div style={{ height: 12 }} />
               <div className="row">
+                <button className="btn" onClick={copyCode}>
+                  {copied ? "Copiado" : "Copiar código"}
+                </button>
                 <button className="btn" onClick={selectTanks}>Seleccionar Tanks (tanks_v1)</button>
                 <button className="btn btnPrimary" onClick={start} disabled={!state.gameId || state.phase !== "LOBBY"}>
                   Start
@@ -100,6 +145,26 @@ export default function HostPage() {
               </div>
 
               {err && <p style={{ color: "var(--danger)" }}>{err}</p>}
+
+              <div style={{ height: 12 }} />
+              <div className="row">
+                <div className="pill">
+                  Link: <code>{typeof window !== "undefined" ? `${window.location.origin}/play/${state.roomCode}` : ""}</code>
+                </div>
+              </div>
+              {qrUrl && (
+                <>
+                  <div style={{ height: 10 }} />
+                  <div className="row">
+                    <div className="pill">QR</div>
+                  </div>
+                  <img
+                    alt="QR Join"
+                    src={qrUrl}
+                    style={{ width: 160, height: 160, borderRadius: 12, border: "1px solid var(--border)" }}
+                  />
+                </>
+              )}
 
               <div style={{ height: 12 }} />
               <div className="label">Jugadores</div>

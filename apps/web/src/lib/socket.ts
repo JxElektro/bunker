@@ -5,10 +5,10 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (socket) return socket;
-  socket = io("http://localhost:4040", {
+  const url = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4040";
+  socket = io(url, {
     transports: ["websocket"],
     autoConnect: true
   });
   return socket;
 }
-

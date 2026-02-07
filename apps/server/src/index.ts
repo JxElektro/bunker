@@ -10,6 +10,7 @@ type ServerRoom = {
   hostSocketId: string | null;
   // Mapa para re-asociar reconexiones: playerId -> socketId
   socketsByPlayerId: Map<string, string>;
+  lastActiveAtMs: number;
 };
 
 const rooms = new Map<RoomCode, ServerRoom>();
@@ -44,6 +45,9 @@ function upsertPlayer(room: ServerRoom, next: Player): Player[] {
 }
 
 io.on("connection", (socket) => {
+  // socket.id -> [{roomCode, playerId}] (un socket puede estar en 1 sala en MVP).
+  let joinedRoom: { roomCode: RoomCode; playerId: string } | null = null;
+
   socket.on("room:create", ({ playerId, name }) => {
     const roomCode = makeRoomCode();
     const createdAtMs = Date.now();
@@ -52,6 +56,7 @@ io.on("connection", (socket) => {
     const room: ServerRoom = {
       hostSocketId: socket.id,
       socketsByPlayerId: new Map([[playerId, socket.id]]),
+      lastActiveAtMs: Date.now(),
       state: {
         roomCode,
         phase: "LOBBY",
@@ -63,6 +68,7 @@ io.on("connection", (socket) => {
     rooms.set(roomCode, room);
 
     socket.join(roomCode);
+    joinedRoom = { roomCode, playerId };
     broadcastRoomState(room);
   });
 
@@ -75,6 +81,8 @@ io.on("connection", (socket) => {
 
     socket.join(roomCode);
     room.socketsByPlayerId.set(playerId, socket.id);
+    room.lastActiveAtMs = Date.now();
+    joinedRoom = { roomCode, playerId };
 
     room.state.players = upsertPlayer(room, {
       playerId,
@@ -90,6 +98,8 @@ io.on("connection", (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
     room.socketsByPlayerId.delete(playerId);
+    room.lastActiveAtMs = Date.now();
+    joinedRoom = null;
 
     // No lo borramos de la sala: lo marcamos disconnected para permitir reconexión.
     room.state.players = room.state.players.map((p) =>
@@ -102,6 +112,7 @@ io.on("connection", (socket) => {
   socket.on("room:set-game", ({ roomCode, gameId }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+    room.lastActiveAtMs = Date.now();
     if (socket.id !== room.hostSocketId) {
       socket.emit("room:error", { message: "Solo el host puede seleccionar el juego." });
       return;
@@ -117,6 +128,7 @@ io.on("connection", (socket) => {
   socket.on("room:start", ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+    room.lastActiveAtMs = Date.now();
     if (socket.id !== room.hostSocketId) {
       socket.emit("room:error", { message: "Solo el host puede iniciar." });
       return;
@@ -134,6 +146,14 @@ io.on("connection", (socket) => {
     if (!room) return;
     if (room.state.phase !== "IN_GAME") return;
     if (room.state.gameId !== gameId) return;
+    room.lastActiveAtMs = Date.now();
+
+    // Rate limit ultra-simple por playerId (evita spam accidental).
+    const key = `${roomCode}:${playerId}`;
+    const now = Date.now();
+    const last = rateLimitLast.get(key) ?? 0;
+    if (now - last < 12) return; // ~83 events/s max
+    rateLimitLast.set(key, now);
 
     // MVP: el server solo routea los inputs. Los juegos viven en el host (authoritative).
     if (!room.hostSocketId) return;
@@ -141,9 +161,40 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    // En MVP no hacemos “cleanup agresivo” por socket.id; se maneja por room:leave o heartbeat futuro.
+    if (!joinedRoom) return;
+    const room = rooms.get(joinedRoom.roomCode);
+    if (!room) return;
+    const { playerId } = joinedRoom;
+    room.socketsByPlayerId.delete(playerId);
+    room.lastActiveAtMs = Date.now();
+
+    room.state.players = room.state.players.map((p) =>
+      p.playerId === playerId ? { ...p, connected: false } : p
+    );
+
+    // Si el host se desconecta, terminamos la sala (MVP).
+    if (socket.id === room.hostSocketId) {
+      room.hostSocketId = null;
+      room.state.phase = "ENDED";
+      io.to(room.state.roomCode).emit("room:error", { message: "Host desconectado. Sala terminada." });
+    }
+
+    broadcastRoomState(room);
   });
 });
+
+const rateLimitLast = new Map<string, number>();
+
+// TTL cleanup: borra salas inactivas por 10 min.
+setInterval(() => {
+  const now = Date.now();
+  const TTL_MS = 10 * 60 * 1000;
+  for (const [code, room] of rooms.entries()) {
+    const anyConnected = room.state.players.some((p) => p.connected);
+    if (anyConnected) continue;
+    if (now - room.lastActiveAtMs > TTL_MS) rooms.delete(code);
+  }
+}, 30_000);
 
 httpServer.listen(PORT, () => {
   // eslint-disable-next-line no-console
