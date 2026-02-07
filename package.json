@@ -1,0 +1,14 @@
+{
+  "name": "bunker",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "echo \"TODO: agregar scripts (server/web)\"",
+    "lint": "echo \"TODO: lint\"",
+    "typecheck": "echo \"TODO: typecheck\""
+  }
+}
+
