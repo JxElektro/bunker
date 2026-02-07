@@ -18,6 +18,8 @@ export default function HostPage() {
   const [connected, setConnected] = useState<boolean>(socket.connected);
   const [copied, setCopied] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [matchNonce, setMatchNonce] = useState<number>(0);
+  const [nowMs, setNowMs] = useState<number>(Date.now());
 
   useEffect(() => {
     const onRoomState = ({ state }: { state: RoomState }) => setState(state);
@@ -45,6 +47,21 @@ export default function HostPage() {
       socket.off("disconnect", onDisconnect);
     };
   }, [socket]);
+
+  // match clock
+  useEffect(() => {
+    const iv = window.setInterval(() => setNowMs(Date.now()), 200);
+    return () => window.clearInterval(iv);
+  }, []);
+
+  // reset game instance when a match starts
+  useEffect(() => {
+    if (!state) return;
+    if (state.phase === "IN_GAME" && state.gameId === TANKS_GAME_ID && state.startedAtMs) {
+      setInputs([]); // clear old inputs
+      setMatchNonce(state.startedAtMs);
+    }
+  }, [state?.phase, state?.gameId, state?.startedAtMs]);
 
   useEffect(() => {
     async function buildQr() {
@@ -79,6 +96,16 @@ export default function HostPage() {
   function start() {
     if (!state) return;
     socket.emit("room:start", { roomCode: state.roomCode });
+  }
+
+  function endMatch() {
+    if (!state) return;
+    socket.emit("room:end", { roomCode: state.roomCode });
+  }
+
+  function restart() {
+    if (!state) return;
+    socket.emit("room:restart", { roomCode: state.roomCode });
   }
 
   async function copyCode() {
@@ -142,6 +169,12 @@ export default function HostPage() {
                 <button className="btn btnPrimary" onClick={start} disabled={!state.gameId || state.phase !== "LOBBY"}>
                   Start
                 </button>
+                <button className="btn" onClick={endMatch} disabled={state.phase !== "IN_GAME"}>
+                  Terminar
+                </button>
+                <button className="btn" onClick={restart}>
+                  Reiniciar
+                </button>
               </div>
 
               {err && <p style={{ color: "var(--danger)" }}>{err}</p>}
@@ -187,7 +220,7 @@ export default function HostPage() {
 
         <section className="card">
           <h2 style={{ margin: "0 0 8px 0" }}>Juego</h2>
-          {!state || state.phase !== "IN_GAME" || state.gameId !== TANKS_GAME_ID ? (
+          {!state || state.gameId !== TANKS_GAME_ID ? (
             <>
               <p className="subtitle" style={{ marginTop: 0 }}>
                 Cuando inicies la partida con <code>tanks_v1</code>, acá aparece el canvas del juego.
@@ -195,13 +228,49 @@ export default function HostPage() {
               <div className="pill">Inputs buffer: {inputs.length}</div>
             </>
           ) : (
-            <TanksHost
-              room={state}
-              inputs={inputs.map((i) => ({ playerId: i.playerId, event: i.event }))}
-            />
+            <>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="pill">
+                  Tiempo:{" "}
+                  <strong style={{ color: "var(--text)" }}>
+                    {formatMs(remainingMs(state, nowMs))}
+                  </strong>
+                </div>
+                <div className="pill">Fase: {state.phase}</div>
+              </div>
+              <div style={{ height: 12 }} />
+
+              {state.phase === "IN_GAME" ? (
+                <TanksHost
+                  key={matchNonce}
+                  room={state}
+                  inputs={inputs.map((i) => ({ playerId: i.playerId, event: i.event }))}
+                />
+              ) : (
+                <div className="card">
+                  <h3 style={{ marginTop: 0 }}>Partida terminada</h3>
+                  <p className="subtitle" style={{ marginTop: 0 }}>
+                    Presiona <strong>Reiniciar</strong> para volver al lobby y empezar otra ronda.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>
     </main>
   );
+}
+
+function remainingMs(state: RoomState, nowMs: number): number {
+  if (!state.startedAtMs || !state.matchDurationMs) return state.matchDurationMs ?? 90_000;
+  const end = state.startedAtMs + state.matchDurationMs;
+  return Math.max(0, end - nowMs);
+}
+
+function formatMs(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
 }

@@ -83,6 +83,17 @@ export function TanksHost({ room, inputs }: Props) {
         ctx.stroke();
       }
 
+      // tiles
+      for (let y = 0; y < g.state.height; y++) {
+        for (let x = 0; x < g.state.width; x++) {
+          const v = g.state.tiles[y * g.state.width + x] ?? 0;
+          if (v === 0) continue;
+          if (v === 1) ctx.fillStyle = "rgba(255,255,255,0.20)"; // brick
+          else ctx.fillStyle = "rgba(255,255,255,0.35)"; // metal
+          ctx.fillRect(x * tile + 2, y * tile + 2, tile - 4, tile - 4);
+        }
+      }
+
       // bullets
       for (const b of g.state.bullets) {
         ctx.fillStyle = "rgba(246,193,119,0.95)";
@@ -92,7 +103,8 @@ export function TanksHost({ room, inputs }: Props) {
       // tanks
       for (const t of Object.values(g.state.tanks)) {
         const hue = hashHue(t.playerId);
-        ctx.fillStyle = `hsla(${hue} 80% 62% / 0.95)`;
+        const inv = Date.now() < t.invulnerableUntilMs;
+        ctx.fillStyle = inv ? `hsla(${hue} 80% 70% / 0.65)` : `hsla(${hue} 80% 62% / 0.95)`;
         ctx.fillRect(t.x * tile + 3, t.y * tile + 3, tile - 6, tile - 6);
 
         // direction indicator
@@ -169,4 +181,3 @@ function dirVec(dir: string): [number, number] {
       return [0, 0];
   }
 }
-

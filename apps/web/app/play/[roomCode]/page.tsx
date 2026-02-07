@@ -47,6 +47,7 @@ export default function ControllerPage() {
 
   function send(event: ControlEvent) {
     if (!state?.gameId) return;
+    if (state.phase !== "IN_GAME") return;
     socket.emit("player:input", { roomCode, playerId, gameId: state.gameId, event });
   }
 

@@ -4,6 +4,8 @@ import { Server } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents, RoomCode, RoomState, Player } from "@bunker/protocol";
 
 const PORT = Number(process.env.PORT ?? 4040);
+const MAX_PLAYERS = 6; // excluye host
+const MATCH_DURATION_MS = 90_000;
 
 type ServerRoom = {
   state: RoomState;
@@ -79,6 +81,24 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const existing = room.state.players.find((p) => p.playerId === playerId);
+    const isReconnect = Boolean(existing);
+
+    // MVP: no permitimos jugadores nuevos en medio de una partida.
+    if (!isReconnect && room.state.phase !== "LOBBY") {
+      socket.emit("room:error", { message: "La partida ya inició. No se pueden unir jugadores nuevos." });
+      return;
+    }
+
+    // Cap de jugadores (solo cuenta PLAYERS).
+    if (!isReconnect) {
+      const currentPlayers = room.state.players.filter((p) => p.role === "PLAYER").length;
+      if (currentPlayers >= MAX_PLAYERS) {
+        socket.emit("room:error", { message: `Sala llena (máx ${MAX_PLAYERS}).` });
+        return;
+      }
+    }
+
     socket.join(roomCode);
     room.socketsByPlayerId.set(playerId, socket.id);
     room.lastActiveAtMs = Date.now();
@@ -87,7 +107,7 @@ io.on("connection", (socket) => {
     room.state.players = upsertPlayer(room, {
       playerId,
       name,
-      role: "PLAYER",
+      role: existing?.role ?? "PLAYER",
       connected: true
     });
 
@@ -137,7 +157,45 @@ io.on("connection", (socket) => {
       socket.emit("room:error", { message: "Selecciona un juego antes de iniciar." });
       return;
     }
+    const playerCount = room.state.players.filter((p) => p.role === "PLAYER").length;
+    if (playerCount < 1) {
+      socket.emit("room:error", { message: "Necesitas al menos 1 jugador para iniciar." });
+      return;
+    }
     room.state.phase = "IN_GAME";
+    room.state.startedAtMs = Date.now();
+    room.state.endedAtMs = undefined;
+    room.state.matchDurationMs = MATCH_DURATION_MS;
+    broadcastRoomState(room);
+  });
+
+  socket.on("room:end", ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.lastActiveAtMs = Date.now();
+    if (socket.id !== room.hostSocketId) {
+      socket.emit("room:error", { message: "Solo el host puede terminar." });
+      return;
+    }
+    if (room.state.phase !== "IN_GAME") return;
+    room.state.phase = "ENDED";
+    room.state.endedAtMs = Date.now();
+    broadcastRoomState(room);
+  });
+
+  socket.on("room:restart", ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.lastActiveAtMs = Date.now();
+    if (socket.id !== room.hostSocketId) {
+      socket.emit("room:error", { message: "Solo el host puede reiniciar." });
+      return;
+    }
+    // Reinicia a lobby pero mantiene jugadores (por reconexión/continuidad)
+    room.state.phase = "LOBBY";
+    room.state.startedAtMs = undefined;
+    room.state.endedAtMs = undefined;
+    room.state.matchDurationMs = undefined;
     broadcastRoomState(room);
   });
 
@@ -195,6 +253,19 @@ setInterval(() => {
     if (now - room.lastActiveAtMs > TTL_MS) rooms.delete(code);
   }
 }, 30_000);
+
+// Auto-end de partida por timer (server-authoritative de la fase, aunque el juego siga en el host).
+setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    if (room.state.phase !== "IN_GAME") continue;
+    if (!room.state.startedAtMs || !room.state.matchDurationMs) continue;
+    if (now - room.state.startedAtMs < room.state.matchDurationMs) continue;
+    room.state.phase = "ENDED";
+    room.state.endedAtMs = now;
+    broadcastRoomState(room);
+  }
+}, 500);
 
 httpServer.listen(PORT, () => {
   // eslint-disable-next-line no-console

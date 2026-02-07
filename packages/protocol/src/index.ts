@@ -16,6 +16,9 @@ export type RoomState = {
   phase: RoomPhase;
   gameId: string | null;
   createdAtMs: number;
+  startedAtMs?: number;
+  endedAtMs?: number;
+  matchDurationMs?: number;
   players: Player[];
 };
 
@@ -30,6 +33,8 @@ export type ClientToServerEvents = {
   "room:leave": (payload: { roomCode: RoomCode; playerId: string }) => void;
   "room:set-game": (payload: { roomCode: RoomCode; gameId: string }) => void;
   "room:start": (payload: { roomCode: RoomCode }) => void;
+  "room:end": (payload: { roomCode: RoomCode }) => void;
+  "room:restart": (payload: { roomCode: RoomCode }) => void;
   "player:input": (payload: { roomCode: RoomCode; playerId: string; gameId: string; event: ControlEvent }) => void;
 };
 
