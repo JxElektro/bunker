@@ -1,0 +1,11 @@
+{
+  "name": "@bunker/games-tanks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@bunker/protocol": "0.0.0"
+  }
+}
+

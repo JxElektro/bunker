@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { RoomState } from "@bunker/protocol";
+import type { ControlEvent, RoomState } from "@bunker/protocol";
 import { getOrCreatePlayerId, getPlayerName, setPlayerName } from "@/src/lib/identity";
 import { getSocket } from "@/src/lib/socket";
+import { TanksHost } from "@/src/components/TanksHost";
+import { TANKS_GAME_ID } from "@bunker/games-tanks";
 
-type InputLog = { atMs: number; playerId: string; event: unknown };
+type InputLog = { atMs: number; playerId: string; event: ControlEvent };
 
 export default function HostPage() {
   const socket = useMemo(() => getSocket(), []);
@@ -17,8 +19,10 @@ export default function HostPage() {
   useEffect(() => {
     const onRoomState = ({ state }: { state: RoomState }) => setState(state);
     const onRoomError = ({ message }: { message: string }) => setErr(message);
-    const onGameInput = (payload: { playerId: string; event: unknown }) => {
-      setInputs((prev) => [{ atMs: Date.now(), playerId: payload.playerId, event: payload.event }, ...prev].slice(0, 50));
+    const onGameInput = (payload: { playerId: string; event: ControlEvent }) => {
+      setInputs((prev) =>
+        [{ atMs: Date.now(), playerId: payload.playerId, event: payload.event }, ...prev].slice(0, 250)
+      );
     };
 
     socket.on("room:state", onRoomState);
@@ -117,24 +121,20 @@ export default function HostPage() {
         </section>
 
         <section className="card">
-          <h2 style={{ margin: "0 0 8px 0" }}>Debug</h2>
-          <p className="subtitle" style={{ marginTop: 0 }}>
-            Inputs recibidos (serán la base para el juego de tanques).
-          </p>
-
-          <div className="pill">Últimos {inputs.length} inputs</div>
-          <div style={{ height: 10 }} />
-          <div style={{ display: "grid", gap: 8 }}>
-            {inputs.map((i) => (
-              <div key={i.atMs} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 10, background: "rgba(255,255,255,0.03)" }}>
-                <div className="label">playerId: <code>{i.playerId}</code></div>
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--muted)" }}>
-                  {JSON.stringify(i.event, null, 2)}
-                </pre>
-              </div>
-            ))}
-            {inputs.length === 0 && <div style={{ color: "var(--muted)" }}>Aún no llegan inputs.</div>}
-          </div>
+          <h2 style={{ margin: "0 0 8px 0" }}>Juego</h2>
+          {!state || state.phase !== "IN_GAME" || state.gameId !== TANKS_GAME_ID ? (
+            <>
+              <p className="subtitle" style={{ marginTop: 0 }}>
+                Cuando inicies la partida con <code>tanks_v1</code>, acá aparece el canvas del juego.
+              </p>
+              <div className="pill">Inputs buffer: {inputs.length}</div>
+            </>
+          ) : (
+            <TanksHost
+              room={state}
+              inputs={inputs.map((i) => ({ playerId: i.playerId, event: i.event }))}
+            />
+          )}
         </section>
       </div>
     </main>
