@@ -88,7 +88,8 @@ export class TanksGame {
 
     const tanks: Record<string, Tank> = {};
     playerIds.forEach((pid, idx) => {
-      const [x, y, dir] = spawns[idx % spawns.length];
+      const spawn = spawns[idx % spawns.length]!;
+      const [x, y, dir] = spawn;
       tanks[pid] = {
         playerId: pid,
         x,

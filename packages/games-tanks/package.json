@@ -5,7 +5,6 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@bunker/protocol": "0.0.0"
+    "@bunker/protocol": "file:../protocol"
   }
 }
-
