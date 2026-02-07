@@ -9,4 +9,9 @@ build
 .env.*
 coverage
 *.log
-
+.secrets/
+*.pem
+*.key
+*.crt
+*.csr
+*accessKeys*.csv
