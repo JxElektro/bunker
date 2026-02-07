@@ -36,7 +36,8 @@ export type ClientToServerEvents = {
 export type ServerToClientEvents = {
   "room:state": (payload: { state: RoomState }) => void;
   "room:error": (payload: { message: string }) => void;
+  // Inputs routeados al host (MVP host-authoritative).
+  "game:input": (payload: { roomCode: RoomCode; gameId: string; playerId: string; event: ControlEvent }) => void;
   // Para MVP host-authoritative: el host puede publicar estado del juego
   "game:state": (payload: { roomCode: RoomCode; gameId: string; tick: number; state: unknown }) => void;
 };
-

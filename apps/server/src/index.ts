@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents, RoomCode, RoomState, Player } from "@bunker/protocol";
 
@@ -27,7 +28,7 @@ function makeRoomCode(): string {
     if (!rooms.has(code)) return code;
   }
   // Fallback (muy improbable)
-  return crypto.randomUUID().slice(0, 6).toUpperCase();
+  return randomUUID().slice(0, 6).toUpperCase();
 }
 
 function broadcastRoomState(room: ServerRoom) {
@@ -136,13 +137,7 @@ io.on("connection", (socket) => {
 
     // MVP: el server solo routea los inputs. Los juegos viven en el host (authoritative).
     if (!room.hostSocketId) return;
-    io.to(room.hostSocketId).emit("game:state", {
-      roomCode,
-      gameId,
-      tick: 0,
-      // En v1 el host ignorará este estado; este evento existe para que el host pueda también publicar.
-      state: { type: "player:input", playerId, event }
-    });
+    io.to(room.hostSocketId).emit("game:input", { roomCode, gameId, playerId, event });
   });
 
   socket.on("disconnect", () => {
@@ -154,4 +149,3 @@ httpServer.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[bunker/server] listening on :${PORT}`);
 });
-

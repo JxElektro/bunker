@@ -14,6 +14,13 @@ Plataforma web estilo Jackbox:
 - `packages/games-tanks`: primer juego (tanques) como plugin (pendiente).
 
 ## Próximo paso (para que esto quede runnable)
-1. Definir stack del frontend: Next.js o Vite (recomendado: Next.js para rutas `/host`, `/join`, `/play/:room`).
-2. Instalar dependencias y agregar scripts de dev en root.
+1. Instalar dependencias:
+   - `npm install`
+2. Correr server realtime:
+   - `npm run dev:server` (porta `4040`)
+3. Correr web:
+   - `npm run dev:web` (porta `3000`)
 
+Rutas:
+- Host: `http://localhost:3000/host`
+- Join: `http://localhost:3000/join`
