@@ -195,7 +195,7 @@ export default function HostPage() {
 	                  Link:{" "}
 	                  <code>
 	                    {typeof window !== "undefined"
-	                      ? `${(joinBaseUrl || window.location.origin).replace(/\\/$/, "")}/play/${state.roomCode}`
+	                      ? `${(joinBaseUrl || window.location.origin).replace(/\/$/, "")}/play/${state.roomCode}`
 	                      : ""}
 	                  </code>
 	                </div>
