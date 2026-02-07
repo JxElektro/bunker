@@ -20,6 +20,7 @@ export default function HostPage() {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [matchNonce, setMatchNonce] = useState<number>(0);
   const [nowMs, setNowMs] = useState<number>(Date.now());
+  const [joinBaseUrl, setJoinBaseUrl] = useState<string>("");
 
   useEffect(() => {
     const onRoomState = ({ state }: { state: RoomState }) => setState(state);
@@ -63,14 +64,23 @@ export default function HostPage() {
     }
   }, [state?.phase, state?.gameId, state?.startedAtMs]);
 
+  // join base url (para pruebas LAN cuando el host está en localhost)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("bunker_join_base_url");
+    const initial = (saved && saved.trim()) ? saved : window.location.origin;
+    setJoinBaseUrl(initial);
+  }, []);
+
   useEffect(() => {
     async function buildQr() {
       if (!state?.roomCode) {
         setQrUrl(null);
         return;
       }
+      const base = (joinBaseUrl || window.location.origin).replace(/\/$/, "");
       // QR usa el "join link" (sirve en prod también).
-      const url = `${window.location.origin}/play/${encodeURIComponent(state.roomCode)}`;
+      const url = `${base}/play/${encodeURIComponent(state.roomCode)}`;
       try {
         const mod = await import("qrcode");
         const dataUrl = await mod.toDataURL(url, { margin: 1, scale: 6 });
@@ -80,7 +90,7 @@ export default function HostPage() {
       }
     }
     void buildQr();
-  }, [state?.roomCode]);
+  }, [state?.roomCode, joinBaseUrl]);
 
   function createRoom() {
     setErr(null);
@@ -179,13 +189,36 @@ export default function HostPage() {
 
               {err && <p style={{ color: "var(--danger)" }}>{err}</p>}
 
-              <div style={{ height: 12 }} />
-              <div className="row">
-                <div className="pill">
-                  Link: <code>{typeof window !== "undefined" ? `${window.location.origin}/play/${state.roomCode}` : ""}</code>
-                </div>
-              </div>
-              {qrUrl && (
+	              <div style={{ height: 12 }} />
+	              <div className="row">
+	                <div className="pill">
+	                  Link:{" "}
+	                  <code>
+	                    {typeof window !== "undefined"
+	                      ? `${(joinBaseUrl || window.location.origin).replace(/\\/$/, "")}/play/${state.roomCode}`
+	                      : ""}
+	                  </code>
+	                </div>
+	              </div>
+	              <div style={{ height: 10 }} />
+	              <div className="field" style={{ margin: 0 }}>
+	                <div className="label">Join base URL (para celular)</div>
+	                <input
+	                  type="text"
+	                  value={joinBaseUrl}
+	                  onChange={(e) => {
+	                    const v = e.target.value;
+	                    setJoinBaseUrl(v);
+	                    try {
+	                      window.localStorage.setItem("bunker_join_base_url", v);
+	                    } catch {
+	                      // ignore
+	                    }
+	                  }}
+	                  placeholder="Ej: http://192.168.1.10:3000"
+	                />
+	              </div>
+	              {qrUrl && (
                 <>
                   <div style={{ height: 10 }} />
                   <div className="row">
