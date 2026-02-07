@@ -48,9 +48,20 @@ aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --po
 aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port 443 --cidr 0.0.0.0/0
 ```
 
-## 4) AMI Ubuntu 22.04 (SSM)
+## 4) AMI Ubuntu 22.04 (SSM, con fallback)
 ```bash
-AMI_ID="$(aws ssm get-parameter --name /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query 'Parameter.Value' --output text)"
+AMI_ID="$(aws ssm get-parameter --name /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query 'Parameter.Value' --output text 2>/dev/null || true)"
+if [ -z "$AMI_ID" ] || [ "$AMI_ID" = "None" ]; then
+  AMI_ID="$(aws ec2 describe-images --owners 099720109477 \
+    --filters \
+      'Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*' \
+      'Name=state,Values=available' \
+      'Name=architecture,Values=x86_64' \
+      'Name=virtualization-type,Values=hvm' \
+      'Name=root-device-type,Values=ebs' \
+    --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
+    --output text)"
+fi
 echo "$AMI_ID"
 ```
 
@@ -87,4 +98,3 @@ docker logs -f bunker-server
 
 ## Vercel note
 Si el frontend está en Vercel (HTTPS), no uses `http://IP:4040` como socket URL en producción. Necesitas `https://api.tudominio.com` con TLS.
-
